@@ -1,0 +1,37 @@
+---
+
+- name: Create records in /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: {{ os_management_ip }} controller compute1 {{ ansible_hostname }}
+
+- name: Enable Openstack-Pike Repositiry
+  yum_repository:
+    name: CentOS-7 - OpenStack pike
+    baseurl: http://mirror.centos.org/centos/7/cloud/$basearch/openstack-pike/
+    enabled: yes
+    proxy: "{{ HTTP_PROXY }}"
+
+- name: Install packages
+  yum:
+    name:
+     - chrony
+    state: present
+
+- name: Configure chonyd service
+  lineinfile:
+    path: /etc/chrony.conf
+    line: "{{ item }}"
+    create: yes
+  with_items:
+    - server 0.ua.pool.ntp.org iburst
+    - server 1.ua.pool.ntp.org iburst
+    - server 2.ua.pool.ntp.org iburst
+
+
+- name: Enable and restart chrony
+  systemd:
+    name: chronyd
+    state: restarted
+    enabled: yes
+

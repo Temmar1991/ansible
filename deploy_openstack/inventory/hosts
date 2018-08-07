@@ -1,5 +1,5 @@
 [openstack_host]
-openstack.example.com ansible_user=amelnyk
+openstack.example.com ansible_user=amelnyk os_management_ip=192.168.20.3
 
 [openstack_host:vars]
 os_root_mysql_pass=de38a9c0b9i48532a2278 

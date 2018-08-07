@@ -1,0 +1,12 @@
+---
+
+- hosts: openstack_host
+  connection: local
+  gather_fact: true
+  become: yes
+  become_method: sudo
+  environment:
+    HTTP_PROXY: 'http://172.22.86.10:8888'
+  roles:
+    - { role: prep_env_openstack }
+  
