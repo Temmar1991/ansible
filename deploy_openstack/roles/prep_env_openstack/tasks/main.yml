@@ -69,9 +69,9 @@
   
 - name: Enshure maria started
   wait_for:
+    host: "{{ os_management_ip }}"
     port: 3306
     delay: 10
-    state: absent
   register: absent_mysql_port
 
 - name: Change password for root
@@ -86,7 +86,7 @@
     - "127.0.0.1"
     - "localhost"
     - "{{ os_management_ip }}"
-#  when: database_pack_status.changed
+  when: absent_mysql_port.port == '3306'
 
 - name: Install message brocker
   yum:
@@ -110,7 +110,7 @@
         read_priv: .*
         write_priv: .*
     state: present
-#  when: rabbitmq_pack_status.changed
+  when: rabbitmq_pack_status.changed
 
 - name: Install memcashed packages
   yum:
@@ -125,7 +125,7 @@
     regexp: '^OPTIONS.*'
     line: "-l 127.0.0.1,::1,controller"
     mode: 0644
-#  when: memcached_pack_status.changed
+  when: memcached_pack_status.changed
 
 - name: Enable and restart memcached
   systemd:
@@ -144,7 +144,7 @@
     src: etcd_openstack.j2
     dest: /etc/etcd/etcd.conf
     mode: 0644
-#  when: etcd_pack_status.changed   
+  when: etcd_pack_status.changed   
 
 - name: Enable and restart etcd service
   systemd:
