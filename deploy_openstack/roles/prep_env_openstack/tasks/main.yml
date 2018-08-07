@@ -3,16 +3,15 @@
 - name: Create records in /etc/hosts
   lineinfile:
     path: /etc/hosts
-    line: {{ os_management_ip }} controller compute1 {{ ansible_hostname }}
+    line: "{{ os_management_ip }} controller compute1 {{ ansible_hostname }}"
 
 - name: Enable Openstack-Pike Repositiry
-  yum_repository:
-    name: CentOS-7 - OpenStack pike
-    baseurl: http://mirror.centos.org/centos/7/cloud/$basearch/openstack-pike/
-    enabled: yes
-    proxy: "{{ HTTP_PROXY }}"
+  yum:
+    name: centos-release-openstack-pike
+    state: present
 
-- name: Install packages
+
+- name: Install chrony  packages
   yum:
     name:
      - chrony
@@ -35,3 +34,120 @@
     state: restarted
     enabled: yes
 
+- name: Install openstack client packages
+  yum:
+    name:
+     - centos-release-openstack-pike
+     - python-openstackclient
+     - openstack-selinux
+    state: present
+    update_cache: yes
+  register: openstack_client_pack_status
+    
+
+- name: Install DB packages
+  yum:
+    name:
+     - mariadb
+     - mariadb-server
+     - MySQL-python
+     - python2-PyMySQL
+    state: present
+  register: database_pack_status
+
+- name: Configure mysql database openstack
+  template:
+    src: mysql_conf_openstack.j2
+    dest: /etc/my.cnf.d/openstack.cnf
+    mode: 0644
+ 
+- name: Enable and restart mariadb
+  systemd:
+    name: mariadb
+    state: restarted
+    enabled: yes
+  
+- name: Enshure maria started
+  wait_for:
+    port: 3306
+    delay: 10
+    state: absent
+  register: absent_mysql_port
+
+- name: Change password for root
+  mysql_user:
+    login_user: root
+    login_password: "{{ os_root_mysql_pass }}"
+    name: root
+    password: "{{ os_root_mysql_pass }}"
+    priv: '*.*:GRANT,ALL'
+    host: "{{ item }}"
+  with_items:
+    - "127.0.0.1"
+    - "localhost"
+    - "{{ os_management_ip }}"
+#  when: database_pack_status.changed
+
+- name: Install message brocker
+  yum:
+    name: rabbitmq-server
+    state: present
+  register: rabbitmq_pack_status
+
+- name: Enable and restart rabbitmq
+  systemd:
+    name: rabbitmq-server
+    state: restarted
+    enabled: yes
+
+- name: Add openstack user to rabbitmq and assign permissions
+  rabbitmq_user:
+    user: openstack
+    password: "{{ os_rabbit_mq_openstack_pass }}"
+    permissions:
+      - vhost: /
+        configure_priv: .*
+        read_priv: .*
+        write_priv: .*
+    state: present
+#  when: rabbitmq_pack_status.changed
+
+- name: Install memcashed packages
+  yum:
+    name: 
+     - memcached
+     - python-memcached
+  register: memcached_pack_status
+
+- name: Configure memcashed service
+  lineinfile:
+    path: /etc/sysconfig/memcached
+    regexp: '^OPTIONS.*'
+    line: "-l 127.0.0.1,::1,controller"
+    mode: 0644
+#  when: memcached_pack_status.changed
+
+- name: Enable and restart memcached
+  systemd:
+    name: memcached
+    state: restarted
+    enabled: yes
+
+- name: Install etcd service
+  yum:
+    name: etcd
+    state: present
+  register: etcd_pack_status
+
+- name: Configure etcd service
+  template:
+    src: etcd_openstack.j2
+    dest: /etc/etcd/etcd.conf
+    mode: 0644
+#  when: etcd_pack_status.changed   
+
+- name: Enable and restart etcd service
+  systemd:
+    name: etcd
+    state: restarted
+    enabled: yes
