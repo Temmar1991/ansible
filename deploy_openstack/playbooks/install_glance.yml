@@ -14,5 +14,5 @@
     OS_AUTH_URL: http://controller:35357/v3
     OS_IDENTITY_API_VERSION: 3
   roles:
-    - { role: install_keystone }
+    - { role: install_glance }
 

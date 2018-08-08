@@ -1,118 +1,121 @@
 ---
 
-- name: Crteate database for keystone
+- name: Crteate database for glance
   mysql_db:
     login_host: "{{ os_management_ip }}"
     login_password: "{{os_root_mysql_pass}}"
     login_user: root
-    name: keystone
+    name: glance
     state: present
 
-- name: Grant privilleges to keystone user
+- name: Grant privilleges to glance user
   mysql_user:
     login_user: root
     login_password: "{{ os_root_mysql_pass }}"
-    name: keystone
-    password: "{{ keystone_db_pass }}"
-    priv: 'keystone.*:ALL'
+    name: glance
+    password: "{{ glance_db_pass }}"
+    priv: 'glance.*:ALL'
     host: "{{ item }}"
     state: present
   with_items:
     - 'localhost'
     - '%'
   
-- name: Install keystone components
+- name: Create user glance
+  os_user:
+    name: glance
+    domain: default
+    password: "{{ glance_user_pass }}"
+    state: present
+    update_password: on_create
+
+- name: Add glance user to admin role
+  os_user_role:
+    role: admin
+    user: glance
+    project: service
+    state: present
+
+
+- name: Create service glance
+  os_keystone_service:
+    name: glance
+    service_type: image
+    description: "OpenStack Image"
+    state: present
+
+- name: Create endpoints for flance
+  os_keystone_endpoint: 
+    service: glance
+    url: "http://controller:9292"
+    region: RegionOne
+    endpoint_interface: "{{ item }}"
+    state: present
+  with_items:
+    - "public"
+    - "internal"
+    - "admin"
+
+- name: Install glance component
   yum:
-    name:
-     - openstack-keystone
-     - httpd
-     - mod_wsgi
-  state: present
-
-
-- name: Configure keystone
-  ini_file:
-    path: /etc/keystone/keystone.conf
+    name: openstack-glance
+    state: present
+  register: glance_pack_status
+  
+- name: Configure glance-api
+  ini_file: 
+    path: "/etc/glance/glance-api.conf"
     section: "{{ item.section }}"
     option: "{{ item.option }}"
     value: "{{ item.value }}"
   with_items:
-    - { section: 'database', option: 'connection', value: 'mysql+pymysql://keystone:{{ keystone_db_pass  }}@controller/keystone' }
-    - { section: 'token', option: 'provider', value: 'provider = fernet' }
-
-- name: Populate the identity database service
-  become: true
-  become_user: keystone
-  shell: "keystone-manage db_sync"
-
-- name: Initialize Fernet key repositories
-  shell: "{{ item }}"
+    - { section: 'database', option: 'connection', value: 'mysql+pymysql://glance:{{ glance_db_pass  }}@controller/glance' }
+    - { section: 'keystone_authtoken', option: 'auth_uri', value: 'http://controller:5000' }
+    - { section: 'keystone_authtoken', option: 'auth_url', value: 'http://controller:35357' }
+    - { section: 'keystone_authtoken', option: 'memcached_servers', value: 'controller:11211' }
+    - { section: 'keystone_authtoken', option: 'auth_type', value: 'password' }
+    - { section: 'keystone_authtoken', option: 'project_domain_name', value: 'default' }
+    - { section: 'keystone_authtoken', option: 'user_domain_name', value: 'default' }
+    - { section: 'keystone_authtoken', option: 'project_name', value: 'service' }
+    - { section: 'keystone_authtoken', option: 'username', value: 'glance' }
+    - { section: 'keystone_authtoken', option: 'password', value: "{{ glance_user_pass }}" }
+    - { section: 'paste_deploy', option: 'flavor', value: 'keystone' }
+    - { section: 'glance_store', option: 'stores', value: 'file,http' }
+    - { section: 'glance_store', option: 'default_store', value: 'file' }
+    - { section: 'glance_store', option: 'filesystem_store_datadir', value: '/var/lib/glance/images/' }
+ 
+- name: Configure glance-registry
+  ini_file:
+    path: "/etc/glance/glance-registry.conf"
+    section: "{{ item.section }}"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
   with_items:
-    - 'keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone'
-    - 'keystone-manage credential_setup --keystone-user keystone --keystone-group keystone'
+    - { section: 'database', option: 'connection', value: 'mysql+pymysql://glance:{{ glance_db_pass  }}@controller/glance' }
+    - { section: 'keystone_authtoken', option: 'auth_uri', value: 'http://controller:5000' }
+    - { section: 'keystone_authtoken', option: 'auth_url', value: 'http://controller:35357' }
+    - { section: 'keystone_authtoken', option: 'memcached_servers', value: 'controller:11211' }
+    - { section: 'keystone_authtoken', option: 'auth_type', value: 'password' }
+    - { section: 'keystone_authtoken', option: 'project_domain_name', value: 'default' }
+    - { section: 'keystone_authtoken', option: 'user_domain_name', value: 'default' }
+    - { section: 'keystone_authtoken', option: 'project_name', value: 'service' }
+    - { section: 'keystone_authtoken', option: 'username', value: 'glance' }
+    - { section: 'keystone_authtoken', option: 'password', value: "{{ glance_user_pass }}" }
+    - { section: 'paste_deploy', option: 'flavor', value: 'keystone' }
+    
 
-- name: Bootstrap the identity service
-  shell: "keystone-manage bootstrap --bootstrap-password {{ os_admin_pass  }} --bootstrap-admin-url http://controller:5000/v3/ --bootstrap-internal-url http://controller:5000/v3/ --bootstrap-public-url http://controller:5000/v3/ --bootstrap-region-id RegionOne"
+- name: Populate database for glance
+  become: true
+  become_user: glance
+  shell: "glance-manage db_sync"
+  when: glance_pack_status.changed
 
-- name: Configure httpd
-  lineinfile:
-    path: /etc/httpd/conf/httpd.conf
-    regexp: '^ServerName'
-    line: 'ServerName controller'
 
-- name: Create symlink wsgi
-  file:
-    src: /usr/share/keystone/wsgi-keystone.conf
-    dest: /etc/httpd/conf.d/
-    state: link
-
-- name: Enable and restart apache
+- name: Enable and restart glance services
   systemd:
-    name: httpd
+    name: "{{ item }}"
     state: restarted
     enabled: yes
-
-- name: Populate and place on home dir the client env scripts
-  template:
-    src: "{{ item.template_name }}"
-    dest: "{{ lookup('env','HOME') }}/{{ item.file_name }}"
-    mode: 0644
   with_items:
-    - { template_name: "admin-openrc.j2", file_name: "admin-openrc" }
-    - { template_name: "demo-openrc.j2", file_name: "{{ os_demo_user }}-openrc" }
-
-- name: Install additional module for work with openstack
-  pip:
-    name: openstacksdk
-
-- name: Create service and myproject projects
-  os_project:
-    name: "{{ item.name }}"
-    domain_id: default
-    description: "{{ item.description }}"
-  with_items:
-    - { name: service, description: "Service Project" }
-    - { name: myproject, description: "Demo Project" }
-
-- name: Create demo user
-  os_user:
-    name: "{{ os_demo_user }}"
-    domain: default
-    password: "{{ os_demo_user_pass }}"
-    state: present
-    update_password: on_create
-
-
-- name: Create role user
-  os_keystone_role:
-    name: user
-  
-
-- name: Associate role with demo user
-  os_user_role:
-    role: user
-    user: "{{ os_demo_user }}"
-    project: myproject
-    state: present
-    
-     
+    - openstack-glance-api
+    - openstack-glance-registry     
