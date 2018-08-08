@@ -1,0 +1,118 @@
+---
+
+- name: Crteate database for keystone
+  mysql_db:
+    login_host: "{{ os_management_ip }}"
+    login_password: "{{os_root_mysql_pass}}"
+    login_user: root
+    name: keystone
+    state: present
+
+- name: Grant privilleges to keystone user
+  mysql_user:
+    login_user: root
+    login_password: "{{ os_root_mysql_pass }}"
+    name: keystone
+    password: "{{ keystone_db_pass }}"
+    priv: 'keystone.*:ALL'
+    host: "{{ item }}"
+    state: present
+  with_items:
+    - 'localhost'
+    - '%'
+  
+- name: Install keystone components
+  yum:
+    name:
+     - openstack-keystone
+     - httpd
+     - mod_wsgi
+  state: present
+
+
+- name: Configure keystone
+  ini_file:
+    path: /etc/keystone/keystone.conf
+    section: "{{ item.section }}"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+  with_items:
+    - { section: 'database', option: 'connection', value: 'mysql+pymysql://keystone:{{ keystone_db_pass  }}@controller/keystone' }
+    - { section: 'token', option: 'provider', value: 'provider = fernet' }
+
+- name: Populate the identity database service
+  become: true
+  become_user: keystone
+  shell: "keystone-manage db_sync"
+
+- name: Initialize Fernet key repositories
+  shell: "{{ item }}"
+  with_items:
+    - 'keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone'
+    - 'keystone-manage credential_setup --keystone-user keystone --keystone-group keystone'
+
+- name: Bootstrap the identity service
+  shell: "keystone-manage bootstrap --bootstrap-password {{ os_admin_pass  }} --bootstrap-admin-url http://controller:5000/v3/ --bootstrap-internal-url http://controller:5000/v3/ --bootstrap-public-url http://controller:5000/v3/ --bootstrap-region-id RegionOne"
+
+- name: Configure httpd
+  lineinfile:
+    path: /etc/httpd/conf/httpd.conf
+    regexp: '^ServerName'
+    line: 'ServerName controller'
+
+- name: Create symlink wsgi
+  file:
+    src: /usr/share/keystone/wsgi-keystone.conf
+    dest: /etc/httpd/conf.d/
+    state: link
+
+- name: Enable and restart apache
+  systemd:
+    name: httpd
+    state: restarted
+    enabled: yes
+
+- name: Populate and place on home dir the client env scripts
+  template:
+    src: "{{ item.template_name }}"
+    dest: "{{ lookup('env','HOME') }}/{{ item.file_name }}"
+    mode: 0644
+  with_items:
+    - { template_name: "admin-openrc.j2", file_name: "admin-openrc" }
+    - { template_name: "demo-openrc.j2", file_name: "{{ os_demo_user }}-openrc" }
+
+- name: Install additional module for work with openstack
+  pip:
+    name: openstacksdk
+
+- name: Create service and myproject projects
+  os_project:
+    name: "{{ item.name }}"
+    domain_id: default
+    description: "{{ item.description }}"
+  with_items:
+    - { name: service, description: "Service Project" }
+    - { name: myproject, description: "Demo Project" }
+
+- name: Create demo user
+  os_user:
+    name: "{{ os_demo_user }}"
+    domain: default
+    password: "{{ os_demo_user_pass }}"
+    state: present
+    update_password: on_create
+
+
+- name: Create role user
+  os_keystone_role:
+    name: user
+  
+
+- name: Associate role with demo user
+  os_user_role:
+    role: user
+    user: "{{ os_demo_user }}"
+    project: myproject
+    state: present
+    
+     

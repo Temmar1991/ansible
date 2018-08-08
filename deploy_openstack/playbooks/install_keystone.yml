@@ -1,0 +1,19 @@
+---
+
+- hosts: openstack_host
+  connection: local
+  gather_facts: true
+  become: yes
+  become_method: sudo
+  environment:
+    HTTP_PROXY: 'http://172.22.86.10:8888'
+    OS_USERNAME: admin
+    OS_PASSWORD: "{{ os_admin_pass }}"
+    OS_PROJECT_NAME: admin
+    OS_USER_DOMAIN_NAME: Default
+    OS_PROJECT_DOMAIN_NAME: Default
+    OS_AUTH_URL: http://controller:35357/v3
+    OS_IDENTITY_API_VERSION: 3
+  roles:
+    - { role: install_keystone }
+

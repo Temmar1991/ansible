@@ -2,12 +2,13 @@
 openstack.example.com ansible_user=amelnyk os_management_ip=192.168.20.3
 
 [openstack_host:vars]
-os_root_mysql_pass=de38a9c0b9i48532a2278 
+os_root_mysql_pass=de38a9c0b9i48532a2278
+os_demo_user=myuser 
 os_demo_user_pass=tneu34
 os_admin_pass=805c2499f567618f7f58
 os_rabbit_mq_openstack_pass=48a8ac39fbc4cbe82354
 keystone_db_pass=9fba17fffed84d31b42d
-glance_db_passs=54f28e8f6cc8165e375c
+glance_db_pass=54f28e8f6cc8165e375c
 glance_user_pass=fb5bf27d40688c14cbdf
 nova_db_pass=fb5bf27d40688c14cbdf
 nova_user_pass=b16414828b468f557f55
