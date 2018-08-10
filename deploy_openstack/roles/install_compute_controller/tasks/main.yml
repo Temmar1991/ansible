@@ -88,7 +88,7 @@
 - name: Create endpoints for placement
   os_keystone_endpoint:
     service: placement
-    url: "http://controller:8780"
+    url: "http://controller:8778"
     region: RegionOne
     endpoint_interface: "{{ item }}"
     state: present
@@ -192,7 +192,7 @@
 - name: Show results of check
   debug: var=check_registers.stdout_lines
   
-- name: Enable and restart glance services
+- name: Enable and restart nova services
   systemd:
     name: "{{ item }}"
     state: started
