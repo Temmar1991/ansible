@@ -1,0 +1,6 @@
+---
+- name: Restart_httpd
+  systemd:
+    name: httpd
+    state: restarted
+
